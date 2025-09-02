@@ -18,8 +18,8 @@ Options:
 
   -o <outpath> --output-path=<outpath>  Where to save the result [default: './'].
   -e <e> --extension=<e>                Output file extension. Supported formats are ....? [default: jpg].
-  -d <darktable> --dt=<darktable>       Path to darktable-cli. On windows change to 'C:/Program Files/darktable/bin/darktable-cli.exe'. [default: '/usr/bin/darktable-cli'].
-  -g <gmic> --gmic=<gmic>               Path to gmic. Will need to be manually entered on windows. [default: '/usr/bin/gmic'].
+  -d <darktable> --dt=<darktable>       Path to darktable-cli. On windows change to 'C:/Program Files/darktable/bin/darktable-cli.exe'. [default: /usr/bin/darktable-cli].
+  -g <gmic> --gmic=<gmic>               Path to gmic. Will need to be manually entered on windows. [default: /usr/bin/gmic].
   -q <q> --quality=<q>                  JPEG compression quality. Lower produces a smaller file at the cost of more artifacts. [default: 90].
   --nightmode                           Use for very dark images. Normalizes brightness (exposure, tonequal) before denoise [default: False].
   --no_deblur                           Do not perform RL-deblur [default: false].
@@ -56,7 +56,7 @@ if __name__ == '__main__':
         # second stage overrides
         second_overrides = var["overrides"]
 
-    cmd_darktable = args["darktable"] if "darktable" in args.keys() else\
+    cmd_darktable = args["--dt"] if args["--dt"] else \
         ("C:/Program Files/darktable/bin/darktable-cli.exe" if os.name == "nt" else "/usr/bin/darktable-cli")
 
     # verify darktable-cli is valid
@@ -65,11 +65,11 @@ if __name__ == '__main__':
         raise Exception
 
     # figure out whether to run deblur with gmic
-    cmd_gmic = args["gmic"] if "gmic" in args.keys() else \
+    cmd_gmic = args["--gmic"] if args["--gmic"] else \
         ("C:\\Users\\Rengo\\AppData\\Roaming\\GIMP\\3.0\\plug-ins\\gmic_gimp_qt\\gmic_gimp_qt.exe" if os.name == "nt" \
              else "/usr/bin/gmic") #TODO: needs to be fixed to use generic user path
-    if not os.path.exists(cmd_gmic) or "no_deblur" in args.keys():
-        print("\nWarning: gmic (" + cmd_gmic+ ") does not exist, disabled RL-deblur")
+    if not os.path.exists(cmd_gmic) or args["--no_deblur"]:
+        print("\nWarning: gmic (" + cmd_gmic+ ") does not exist or --no_deblur is set, disabled RL-deblur")
         rldeblur = False
     else: rldeblur = True
 
@@ -77,7 +77,7 @@ if __name__ == '__main__':
     valid_extensions = ['3FR','ARW','SR2','SRF','CR2','CR3','CRW','DNG','ERF','FFF','MRW','NEF','NRW','ORF','PEF','RAF','RW2']
 
     # update the first and second ops for night mode
-    if "nightmode" in args.keys():
+    if args["--nightmode"]:
         print("\nUpdating ops for nightmode ...")
         nightmode_ops = ['exposure', 'toneequal']
         first_ops.extend(nightmode_ops)
@@ -89,8 +89,7 @@ if __name__ == '__main__':
     done = False
     xmp = args["<raw_image>"] + '.xmp'
     # determine a new filename
-    basename, ext = os.path.splitext(args["<raw_image>"])
-    if "extension" in args.keys(): ext = '.' + args["extension"].lstrip('.')
+    basename, input_ext = os.path.splitext(args["<raw_image>"])
 
     if not os.path.exists(args["<raw_image>"]):
         print("Non-existing file: ", args["<raw_image>"], ", skipping.")
@@ -98,14 +97,14 @@ if __name__ == '__main__':
     elif not os.path.exists(xmp):
         print("Error: cannot find sidecar file ", xmp)
         done = True
-    elif ext.lstrip('.').upper() not in valid_extensions:
+    elif input_ext.lstrip('.').upper() not in valid_extensions:
         print("Non-RAW file: ", args["<raw_image>"], ", skipping.")
         done = True
     if not done:
         i = 0
-        ext_out = args['ext'] if 'ext' in args.keys() else '.jpg'
+        ext_out = '.' + args['--extension'] if args['--extension'] else '.jpg'
         out_filename = basename + ext_out
-        outpath = args["outpath"] if "outpath" in args.keys() else "./"
+        outpath = args["--output-path"] if args["--output-path"] else "./"
         while os.path.exists(os.path.join(outpath, out_filename)):
             i = i + 1
             out_filename = basename + '_' + str(i) + ext_out
@@ -120,20 +119,20 @@ if __name__ == '__main__':
         # sort history ops
         history_ops.sort(key=lambda tag: int(tag['darktable:num']))
         # remove ops not listed in first_ops
-        if "verbose" in args.keys():
+        if args["--verbose"]:
             print("\nPrepping first stage ...")
         for op in reversed(history_ops):
             if op['darktable:operation'] not in first_ops:
                 # op['darktable:enabled'] = "0"
                 op.extract()    # remove the op completely
-                if "verbose" in args.keys():
+                if args["--verbose"]:
                     print("--removed: ", op['darktable:operation'])
 
             else:
                 # for "flip": don't remove, only disable
                 if op['darktable:operation'] == 'flip':
                     op['darktable:enabled'] = "0"
-                    if "verbose" in args.keys():
+                    if args["--verbose"]:
                         print("default:    ", op['darktable:operation'])
 
         with open(basename+'.s1.xmp', 'w') as first_stage:
@@ -149,18 +148,18 @@ if __name__ == '__main__':
         # in 2    : N   Y   N   Y
         # action  : K   K   R   K
 
-        if "verbose" in args.keys():
+        if args["--verbose"]:
             print("\nPrepping second stage ...")
 
         for op in reversed(history_ops):
             if op['darktable:operation'] not in second_ops and op['darktable:operation'] in first_ops:
                 op.extract()    # remove the op completely
-                if "verbose" in args.keys():
+                if args["--verbose"]:
                     print("--removed: ", op['darktable:operation'])
             elif op['darktable:operation'] in second_overrides:
                 for key, val in second_overrides[op['darktable:operation']].items():
                     op[key] = val
-        if "verbose" in args.keys():
+        if args["--verbose"]:
             print("default:    ", op['darktable:operation'], op['darktable:enabled'])
 
 
@@ -249,14 +248,14 @@ if __name__ == '__main__':
         if rldeblur:
             tmp_rl_filename = out_filename.replace(' ', '_')  # gmic can't handle spaces
 
-            sigma = args['sigma'] if "sigma" in args.keys() else 1
-            quality = args['quality'] if "quality" in args.keys() else "90"
-            iteration = args['iteration'] if "iteration" in args.keys() else "10"
+            sigma = args['--sigma'] if args['--sigma'] else 1
+            quality = args['--quality'] if args['--quality'] else "90"
+            iteration = args['--iterations'] if args['--iterations'] else "10"
             cmd = (cmd_gmic + ' "' + s2_filename + '" ' +
                    '-deblur_richardsonlucy ' + str(sigma) + ',' + str(iteration) + ',1 ' + \
                     '-/ 256 cut 0,255 round -o "' + tmp_rl_filename + ',' + str(quality) + '"')
 
-            if "debug" in args.keys():
+            if args["--debug"]:
                 print('RL-deblur cmd: ', cmd)
 
             subprocess.call(cmd, shell=True)
@@ -281,7 +280,7 @@ if __name__ == '__main__':
 
 
         #========== clean up ==========
-        if 'debug' not in args.keys():
+        if not args['--debug']:
             os.remove(s1_filename)
             os.remove(denoised_filename)
             os.remove(basename + '.s1.xmp')
