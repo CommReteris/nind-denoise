@@ -27,10 +27,13 @@ $ python3 src/denoise.py "/path/to/photo0123.RAW"
 # Requirements
 
  - Darktable, and raw images processed with darktable to operate on, along with their .xmp files
- - uv (or pip, or whichever you prefer)
+ - [variant-enabled](https://astral.sh/blog/wheel-variants) uv
  - The correct gpu drivers for your system are installed along with OpenCL.
  - The oldest linux kernel confirmed working with intel's xpu acceleration is 6.14. So try and get one at least that 
 new. 
+
+## Darktable
+ - you may need a version prior to [5.2?] in order to run rl-deblur correctly. see [thislinkineedtofillin]
 
 ### nVidia
  - Driver + CUDA
@@ -46,8 +49,6 @@ that details what you need for ubuntu that should give you an idea. Make sure no
 if you plan to use PyTorch, install `libze-dev` and `intel-ocloc` \[as well]"_ On arch linux start with 
  - `intel-compute-runtime`, `level-zero-loader` and `level-zero-headers`
 
-
-
 Proper operation can be verified with:
  `clinfo | grep device` and `darktable-cltest`
 
@@ -56,7 +57,6 @@ Proper operation can be verified with:
 Warning: this is a prototype developmental codebase. 
 The following should be considered developer documentation (or at least for only those willing to experiment); it is not
 yet a polished end user install guide.
-
 
 To install, run the following commands. This should pull the right version of PyTorch for your gpu/cpu/xpu/whatever, but
 if it doesn't, or you just want to avoid the possibility of iterating, continue reading below for how to modify to match
@@ -73,31 +73,41 @@ cd nind-denoise
 
 ### 2 - Create a virtual environment with `uv venv` and activate it.
 
-On **Windows** that would look something like this:
+- The fancy new varient-enabled version of uv makes it possible to _install_ the correct version of PyTorch for your GPU,
+  automagically. We'll install that and use it to deploy the rest of the venv.
+On **Windows** that would look something like this :
 
 ```powershell
+PS> powershell -c { $env:INSTALLER_DOWNLOAD_URL = 'https://wheelnext.astral.sh'; irm https://astral.sh/uv/install.ps1 | iex }
 PS> uv venv
 PS> .venv/Scripts/activate
-(nind-denoise) PS> Get-Command eventvwr
+(nind-denoise) PS> Get-Command python
 
 CommandType   Name          Version    Definition
 -----------   ----          -------    ----------
 Application   python.exe    3.1x.xx    C:\Users\<user>\...\nind-denoise\.venv/scripts\python.exe
 
-
-PS>
 ```
+
+From the output of the last command, make sure python.exe is defined inside the .venv directory. Don't proceed until it
+is. 
+
 
 On **Linux**, the following will work for most people. If you are a [fish](https://en.wikipedia.org/wiki/Fish_(Unix_shell)), or
 otherwise out of water, go [here](https://docs.astral.sh/uv/pip/environments/#using-a-virtual-environment) for help. 
 
  ```bash
+ [user@linux]$ curl -LsSf https://astral.sh/uv/install.sh | INSTALLER_DOWNLOAD_URL=https://wheelnext.astral.sh sh
  [user@linux]$ uv venv
  [user@linux]$ source .venv/bin/activate
  [user@linux]$ which python
  /home/user/.../nind-denoise/.venv/bin/python
-[user@linux]$
- ```
+ [user@linux]$
+ 
+```
+
+From the output of the last command, make sure the python in your path is inside the .venv directory. Don't proceed 
+until it is.
 
 ## 3 Install required python packages
 
@@ -106,26 +116,29 @@ tweaked to match your hardware (_i.e.,_ GPU or lack thereof). This command _shou
 just scroll down and pick the right one yourself. 
 
 ```console
-$ uv add -r requirements.in --upgrade
+ $ uv pip install -r requirements.in --upgrade
 ```
 
-### nVIDIA CUDA
-For CUDA 12.9, you would do:
-```
-uv add -r requirements.in --index "https://download.pytorch.org/whl/cu129 --upgrade"
-```
+### 4 Verify that PyTorch is picking up your GPU
 
-### Intel GPU
-```
-uv add -r requirements.in --index "https://download.pytorch.org/whl/xpu --upgrade"
-```
+If you want to make sure you have the expected acceleration provided by your hardware, you can open up a python console
+and run some pytorch checks. To get to the python console, just type `python` in the same console as before. If you've
+already closed it you'll have to navigate back to the nind-denoise directory and activate the venv again. For example, 
+on a Windows machine with an nVidia GPU it might look like this:
 
-### AMD ROCM
+```console
+(nind-denoise) PS C:\Users\...\nind-denoise> python
+Python 3.13.3 (main, Apr  8 2025, 04:04:49) [MSC v.1943 64 bit (AMD64)] on win32
+Type "help", "copyright", "credits" or "license" for more information.
+>>> import torch
+>>> torch.accelerator.is_available()
+True
+>>> torch.cuda.is_available()
+True
+>>> torch.xpu.is_available()
+False
+>>> 
 ```
-uv add -r requirements.in --index "https://download.pytorch.org/whl/rocm6.4 --upgrade"
-```
-
-## Citations
 
 Go cite Benoit
 

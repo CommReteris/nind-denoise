@@ -18,8 +18,8 @@ Options:
 
   -o <outpath> --output-path=<outpath>  Where to save the result [default: './'].
   -e <e> --extension=<e>                Output file extension. Supported formats are ....? [default: jpg].
-  -d <darktable> --dt=<darktable>       Path to darktable-cli. On windows change to 'C:/Program Files/darktable/bin/darktable-cli.exe'. [default: /usr/bin/darktable-cli].
-  -g <gmic> --gmic=<gmic>               Path to gmic. Will need to be manually entered on windows. [default: /usr/bin/gmic].
+  -d <darktable> --dt=<darktable>       Path to darktable-cli. Use this only if not automatically found.
+  -g <gmic> --gmic=<gmic>               Path to gmic. Use this only if not automatically found.
   -q <q> --quality=<q>                  JPEG compression quality. Lower produces a smaller file at the cost of more artifacts. [default: 90].
   --nightmode                           Use for very dark images. Normalizes brightness (exposure, tonequal) before denoise [default: False].
   --no_deblur                           Do not perform RL-deblur [default: false].
@@ -40,6 +40,8 @@ import copy
 import exiv2
 import yaml
 import io
+
+from networkx.drawing import shell_layout
 
 """
   main program, meant to be called manually or by darktable's lua script
@@ -66,7 +68,7 @@ if __name__ == '__main__':
 
     # figure out whether to run deblur with gmic
     cmd_gmic = args["--gmic"] if args["--gmic"] else \
-        ("C:\\Users\\Rengo\\AppData\\Roaming\\GIMP\\3.0\\plug-ins\\gmic_gimp_qt\\gmic_gimp_qt.exe" if os.name == "nt" \
+        (os.path.join(os.path.expanduser("~\\"),"gmic-3.6.1-cli-win64\\gmic.exe") if os.name == "nt" \
              else "/usr/bin/gmic") #TODO: needs to be fixed to use generic user path
     if not os.path.exists(cmd_gmic) or args["--no_deblur"]:
         print("\nWarning: gmic (" + cmd_gmic+ ") does not exist or --no_deblur is set, disabled RL-deblur")
@@ -176,7 +178,7 @@ if __name__ == '__main__':
             #========== invoke darktable-cli with first stage ==========
             # https://github.com/darktable-org/darktable/issues/12958
             # leave the intermediate tiff files in the current folder
-            s1_filename = os.path.abspath(basename + '_s1.tif')
+            s1_filename = basename + '_s1.tif'
             if os.path.exists(s1_filename):
                 os.remove(s1_filename)
 
@@ -187,7 +189,7 @@ if __name__ == '__main__':
                         '--apply-custom-presets', 'false',
                         '--core', '--conf', 'plugins/imageio/format/tiff/bpp=32'
                         ])
-        if not os.path.exists(s1_filename):
+        if not os.path.exists(os.path.abspath(s1_filename)):
             print("Error: first-stage export not found: ", s1_filename)
             raise Exception
 
@@ -238,7 +240,7 @@ if __name__ == '__main__':
         subprocess.run([cmd_darktable,
                         denoised_filename,
                         os.path.abspath(basename + '.s2.xmp'),
-                        os.path.abspath(s2_filename),
+                        s2_filename,
                          '--icc-intent', 'PERCEPTUAL', '--icc-type', 'SRGB',
                         '--apply-custom-presets', 'false',
                         '--core', '--conf', 'plugins/imageio/format/tiff/bpp=16'
@@ -247,36 +249,36 @@ if __name__ == '__main__':
         # call ImageMagick RL-deblur
         if rldeblur:
             tmp_rl_filename = out_filename.replace(' ', '_')  # gmic can't handle spaces
-
+            print(tmp_rl_filename)
+            print(out_filename)
             sigma = args['--sigma'] if args['--sigma'] else 1
             quality = args['--quality'] if args['--quality'] else "90"
             iteration = args['--iterations'] if args['--iterations'] else "10"
-            cmd = (cmd_gmic + ' "' + s2_filename + '" ' +
-                   '-deblur_richardsonlucy ' + str(sigma) + ',' + str(iteration) + ',1 ' + \
-                    '-/ 256 cut 0,255 round -o "' + tmp_rl_filename + ',' + str(quality) + '"')
 
-            if args["--debug"]:
-                print('RL-deblur cmd: ', cmd)
+            subprocess.call([cmd_gmic,
+                             s2_filename, '-deblur_richardsonlucy', str(sigma), str(iteration), '1',
+                              '-o', tmp_rl_filename, str(quality) #'-/ 256 cut 0,255 round',
+                             ])
 
-            subprocess.call(cmd, shell=True)
-
-            # rename tmp file
-            os.rename(tmp_rl_filename, out_filename)
+            # rename tmp file if it's different
+            if tmp_rl_filename != out_filename:
+                os.rename(tmp_rl_filename, out_filename)
             print('Applied RL-deblur to:', out_filename)
 
 
         # copy exif
         exiv_src = exiv2.ImageFactory.open(s1_filename)
         exiv_src.readMetadata()
-        exiv_dst = exiv2.ImageFactory.open(out_filename)
+        exiv_dst = exiv2.ImageFactory.open(os.path.abspath(out_filename))
         exiv_dst.setExifData(exiv_src.exifData())
         exiv_dst.writeMetadata()
 
         print('Copied EXIF from', s1_filename, 'to', out_filename)
 
         # move output file into outpath
-        shutil.move(out_filename, os.path.join(outpath, out_filename))
-        print('Moved final output to ' + os.path.join(outpath, out_filename))
+        if outpath not in os.path.abspath(out_filename):
+            shutil.move(out_filename, os.path.join(outpath, out_filename))
+            print('Moved final output to ' + os.path.join(outpath, out_filename))
 
 
         #========== clean up ==========
