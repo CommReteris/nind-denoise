@@ -35,7 +35,8 @@ $ python3 src/denoise.py "/path/to/photo0123.RAW"
 new. 
 
 ## Darktable
- - you may need a version prior to [5.2?] in order to run rl-deblur correctly. see [thislinkineedtofillin]
+ - If [this PR](https://github.com/darktable-org/darktable/pull/19189) is still open, you may need to limit yourself to 
+version [5.0.1](https://github.com/darktable-org/darktable/releases/tag/release-5.0.1) in order to run rl-deblur.
 
 ### nVidia
  - Driver + CUDA

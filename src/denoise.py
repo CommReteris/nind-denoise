@@ -16,9 +16,9 @@ Usage:
 Options:
 
 
-  -o <outpath> --output-path=<outpath>  Where to save the result [default: './'].
+  -o <outpath> --output-path=<outpath>  Where to save the result (defaults to current directory)).
   -e <e> --extension=<e>                Output file extension. Supported formats are ....? [default: jpg].
-  -d <darktable> --dt=<darktable>       Path to darktable-cli. Use this only if not automatically found.
+  --dt=<darktable>       Path to darktable-cli. Use this only if not automatically found.
   -g <gmic> --gmic=<gmic>               Path to gmic. Use this only if not automatically found.
   -q <q> --quality=<q>                  JPEG compression quality. Lower produces a smaller file at the cost of more artifacts. [default: 90].
   --nightmode                           Use for very dark images. Normalizes brightness (exposure, tonequal) before denoise [default: False].
@@ -41,8 +41,16 @@ import exiv2
 import yaml
 import io
 
-from networkx.drawing import shell_layout
+def clone_exif(src_file: str, dst_file: str) -> None:
+    """  Convenience function to clone the exif metadata from one image file to another
+    """
+    src_image = exiv2.ImageFactory.open(src_file)
+    src_image.readMetadata()
 
+    dst_image = exiv2.ImageFactory.open(dst_file)
+    dst_image.setExifData( src_image.exifData() )
+    dst_image.writeMetadata()
+    return
 """
   main program, meant to be called manually or by darktable's lua script
 """
@@ -106,7 +114,7 @@ if __name__ == '__main__':
         i = 0
         ext_out = '.' + args['--extension'] if args['--extension'] else '.jpg'
         out_filename = basename + ext_out
-        outpath = args["--output-path"] if args["--output-path"] else "./"
+        outpath = os.path.abspath(args["--output-path"]) if args["--output-path"] else os.path.curdir
         while os.path.exists(os.path.join(outpath, out_filename)):
             i = i + 1
             out_filename = basename + '_' + str(i) + ext_out
@@ -220,17 +228,12 @@ if __name__ == '__main__':
 
 
         # copy exif from RAW file to denoised image #TODO: one refactor among many needed
-        exiv_src = exiv2.ImageFactory.open(args["<raw_image>"])
-        exiv_src.readMetadata()
-        exiv_dst = exiv2.ImageFactory.open(denoised_filename)
-        exiv_dst.setExifData(exiv_src.exifData())
-        exiv_dst.writeMetadata()
-
-        print('Copied EXIF from ' + args["<raw_image>"] + ' to ' + denoised_filename)
+        clone_exif(args["<raw_image>"], denoised_filename)
+        if args["--verbose"]:
+            print('Copied EXIF from ' + args["<raw_image>"] + ' to ' + denoised_filename)
 
 
         #========== invoke darktable-cli with second stage ==========
-
         if rldeblur:
             s2_filename = basename + '_s2.tif'
             if os.path.exists(s2_filename):
@@ -238,9 +241,9 @@ if __name__ == '__main__':
         else:
             s2_filename = out_filename
         subprocess.run([cmd_darktable,
-                        denoised_filename,
-                        os.path.abspath(basename + '.s2.xmp'),
-                        s2_filename,
+                        denoised_filename,                      # image input
+                        os.path.abspath(basename + '.s2.xmp'),  # xmp input
+                        s2_filename,                            # image output
                          '--icc-intent', 'PERCEPTUAL', '--icc-type', 'SRGB',
                         '--apply-custom-presets', 'false',
                         '--core', '--conf', 'plugins/imageio/format/tiff/bpp=16'
@@ -249,37 +252,26 @@ if __name__ == '__main__':
         # call ImageMagick RL-deblur
         if rldeblur:
             tmp_rl_filename = out_filename.replace(' ', '_')  # gmic can't handle spaces
-            print(tmp_rl_filename)
-            print(out_filename)
             sigma = args['--sigma'] if args['--sigma'] else 1
             quality = args['--quality'] if args['--quality'] else "90"
             iteration = args['--iterations'] if args['--iterations'] else "10"
 
-            subprocess.call([cmd_gmic,
-                             s2_filename, '-deblur_richardsonlucy', str(sigma), str(iteration), '1',
-                              '-o', tmp_rl_filename, str(quality) #'-/ 256 cut 0,255 round',
-                             ])
+            subprocess.run([cmd_gmic, s2_filename,
+                            '-deblur_richardsonlucy', str(sigma) + ',' + str(iteration) + ',' + '1',
+                            #'-/ 256 cut 0,255 round',
+                            '-o', tmp_rl_filename + ',' + str(quality) #
+                             ], cwd=outpath)
 
             # rename tmp file if it's different
             if tmp_rl_filename != out_filename:
                 os.rename(tmp_rl_filename, out_filename)
-            print('Applied RL-deblur to:', out_filename)
-
+            if args["--verbose"]:
+                print('Applied RL-deblur to:', out_filename)
 
         # copy exif
-        exiv_src = exiv2.ImageFactory.open(s1_filename)
-        exiv_src.readMetadata()
-        exiv_dst = exiv2.ImageFactory.open(os.path.abspath(out_filename))
-        exiv_dst.setExifData(exiv_src.exifData())
-        exiv_dst.writeMetadata()
-
-        print('Copied EXIF from', s1_filename, 'to', out_filename)
-
-        # move output file into outpath
-        if outpath not in os.path.abspath(out_filename):
-            shutil.move(out_filename, os.path.join(outpath, out_filename))
-            print('Moved final output to ' + os.path.join(outpath, out_filename))
-
+        clone_exif(s1_filename, out_filename)
+        if args["--verbose"]:
+            print('Copied EXIF from', s1_filename, 'to', out_filename)
 
         #========== clean up ==========
         if not args['--debug']:
@@ -291,24 +283,3 @@ if __name__ == '__main__':
         if (s2_filename != out_filename and os.path.exists(s2_filename)):
             os.remove(s2_filename)
 
-class denoiser:
-    """ A class that implements an inferencer to short-circuit the nind_denoise dependency. Attempts to load a model
-    from `path`. Failing that it will default to downloading a NIND pretrained model from a backblaze bucket or other
-    `url`. If, however, `url=None` is explicitly passed it will initialize empty. Tooling to handle this usecase not yet
-     implemented.
-    """
-    def __init__(self, path=None, url="https://f005.backblazeb2.com/file/modelzoo/nind/generator_650.pt",force=False):
-        self.path = os.path.relpath(path) if path is not None else path
-        self.device = torch.accelerator.current_accelerator() if torch.accelerator.current_accelerator() is not None else torch.device('cpu')
-        # TODO: pytorch.hub is probably the easy-mode path to a simpler inference codebase, w/o moving away from pytorch
-        from torch import hub
-        if not (os.path.exists(path) or force) and url is not None:
-            self.url = url
-            hub.download_url_to_file(
-                self.url, self.path
-            )
-        else:
-            self.url = None
-        self.model = torch.load(self.path, map_location=self.device)
-
-""" TODO: pull in the rest of the needed functionality from denoise_image.py."""
