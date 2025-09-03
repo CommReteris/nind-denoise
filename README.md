@@ -27,6 +27,8 @@ $ python3 src/denoise.py "/path/to/photo0123.RAW"
 # Requirements
 
  - Darktable, and raw images processed with darktable to operate on, along with their .xmp files
+ - gmic; on windows go [here](https://gmic.eu/download.html) and scroll down to get the "gmic-cli" version. extract to
+ your home directory or be prepared to find the exectable and pass its location to denoise.py
  - [variant-enabled](https://astral.sh/blog/wheel-variants) uv
  - The correct gpu drivers for your system are installed along with OpenCL.
  - The oldest linux kernel confirmed working with intel's xpu acceleration is 6.14. So try and get one at least that 
