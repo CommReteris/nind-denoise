@@ -56,17 +56,18 @@ operations:
   - vignette
   - watermark
   - zonesystem
-overrides:
-  colorin:
-    darktable:blendop_params: gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=
-    darktable:blendop_version: '14'
-    darktable:enabled: '1'
-    darktable:modversion: '7'
-    darktable:multi_name: ''
-    darktable:multi_name_hand_edited: '0'
-    darktable:multi_priority: '0'
-    darktable:num: '0'
-    darktable:operation: colorin
-    darktable:params: gz48eJxjZBgFowABWAbaAaNgwAEAEDgABg==
-commands:
-  model_path: "src/nind_denoise/models/2021-06-14T20_27_nn_train/generator_650.pt"
+  overrides:
+    colorin:
+      darktable:blendop_params: gz11eJxjYIAACQYYOOHEgAZY0QWAgBGLGANDgz0Ej1Q+dcF/IADRAGpyHQU=
+      darktable:blendop_version: '14'
+      darktable:enabled: '1'
+      darktable:modversion: '7'
+      darktable:multi_name: ''
+      darktable:multi_name_hand_edited: '0'
+      darktable:multi_priority: '0'
+      darktable:num: '0'
+      darktable:operation: colorin
+      darktable:params: gz48eJxjZBgFowABWAbaAaNgwAEAEDgABg==
+models:
+  nind_generator_650.pt:
+    path: "src/nind_denoise/models/2021-06-14T20_27_nn_train/generator_650.pt"
