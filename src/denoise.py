@@ -190,7 +190,7 @@ def denoise_file(_args: dict, _input_path: pathlib.Path):
     """
     print(_input_path)
     output_dir = pathlib.Path(_args["--output-path"]) if _args["--output-path"] else _input_path.parent
-    output_extension = '.' + _args['--extension'] if _args['--extension'][0] != '.' else _args['extension']
+    output_extension = '.' + _args['--extension'] if _args['--extension'][0] != '.' else _args['--extension']
     outpath = output_dir if output_dir.suffix != '' else (output_dir / _input_path.name).with_suffix(
         output_extension)
     input_xmp = _input_path.with_suffix(_input_path.suffix + '.xmp')
