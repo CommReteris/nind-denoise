@@ -20,12 +20,15 @@ To uninstall, just delete the directory.
 
 # Usage
 
+## Command-line
+
 To denoise an image, run:
 
 ```console
 $ python3 src/denoise.py "/path/to/photo0123.RAW"
 ```
-**Note:** On windows, if you use forward  _do not_ use single forward slashes for paths. Double is OK:
+
+**Note:** On windows, if you use forward slashes  _do not_ use single forward slashes for paths. Double is OK:
 
 ```powershell 
 PS> python3 src\\denoise.py "\bad\path\to\photo0123.RAW"
@@ -63,6 +66,53 @@ Options:
   -h --help                             Show this screen.
 """
 ```
+
+## Darktable Lua Plugin
+
+A Lua script is provided for direct integration with [Darktable](https://www.darktable.org/). The script adds a new export storage target called "NIND-denoise RL" that automatically processes images through the denoising pipeline and applies Richardson-Lucy deblur sharpening via GMic when you export from Darktable.
+
+### Installation
+
+The Lua script (`src/lua-scripts/nind_denoise_rl.lua`) needs to be copied to Darktable's Lua scripts directory. The location is system-dependent:
+
+**Linux:**
+```bash
+~/.config/darktable/lua/
+```
+
+**macOS:**
+```bash
+~/Library/Application Support/darktable/lua/
+```
+
+**Windows:**
+```powershell
+%LOCALAPPDATA%\darktable\lua\
+```
+
+If the `lua/` directory doesn't exist, create it. Then copy the script:
+
+```bash
+# Example for Linux/macOS
+mkdir -p ~/.config/darktable/lua/
+cp src/lua-scripts/nind_denoise_rl.lua ~/.config/darktable/lua/
+```
+
+For more information on Darktable Lua scripts, see the [Darktable user manual](https://docs.darktable.org/usermanual/en/lua/) and the [darktable-community-scripts](https://github.com/darktable-org/lua-scripts) repository.
+
+### Usage
+
+1. Start Darktable and enable the script from the Script Manager (`lighttable > script manager`)
+2. Configure the script preferences in `preferences > lua options`:
+   - Set the nind_denoise directory path (the folder containing `src/denoise.py`)
+   - Set the GMic CLI executable path (if not automatically found)
+   - Optionally set the exiftool executable path for EXIF metadata copying
+3. Select one or more images in the lighttable
+4. From "export selected", choose "NIND-denoise RL" as the target storage
+5. For format options, TIFF 8-bit or 16-bit is recommended
+6. Export and let the script handle the rest
+
+The Lua plugin requires the same dependencies as the command-line tool (Python environment with PyTorch, GMic, etc.), plus Darktable itself.
 
 # Requirements
 
