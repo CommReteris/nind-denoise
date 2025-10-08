@@ -2,6 +2,7 @@
 Image analysis on file paths
 '''
 
+import pathlib
 import piqa
 import subprocess
 try:
@@ -9,7 +10,7 @@ try:
 except ModuleNotFoundError:
     print('filter_dataset_by_iso.py: warning: piexif library not found, using exiftool instead')
 import sys
-sys.path.append('..')
+sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 from nind_denoise.common.libs import pt_helpers
 
 

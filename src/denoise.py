@@ -140,8 +140,11 @@ def clone_exif(src_file: pathlib.Path, dst_file: pathlib.Path, verbose=False) ->
 
 
 def read_config(
-    config_path="./src/config/operations.yaml", _nightmode=False, verbose=False
+    config_path=None, _nightmode=False, verbose=False
 ) -> dict:
+    if config_path is None:
+        # Use path relative to this script's location
+        config_path = pathlib.Path(__file__).parent / "config" / "operations.yaml"
     """
     Reads a configuration file and optionally modifies it for night mode.
 
@@ -395,6 +398,10 @@ def denoise_file(_args: dict, _input_path: pathlib.Path):
         if output_dir.suffix != ""
         else (output_dir / _input_path.name).with_suffix(output_extension)
     )
+    
+    # Ensure parent directory exists for output files
+    outpath.parent.mkdir(parents=True, exist_ok=True)
+    
     input_xmp = (
         pathlib.Path(_args["--sidecar"])
         if _args.get("--sidecar")
@@ -491,21 +498,23 @@ def denoise_file(_args: dict, _input_path: pathlib.Path):
         os.remove(stage_one_denoised_filepath)
 
     model_config = config["models"]["nind_generator_650.pt"]
-    if not pathlib.Path(model_config["path"]).is_file():
+    # Make model path absolute relative to this script
+    model_path = pathlib.Path(__file__).parent / model_config["path"]
+    if not model_path.is_file():
         import requests
 
         requests.get(
             "https://f005.backblazeb2.com/file/modelzoo/nind/generator_650.pt",
-            model_config["path"],
+            str(model_path),
         )
     subprocess.run(
         [
             sys.executable,
-            pathlib.Path("src/nind_denoise/denoise_image.py").resolve(),
+            pathlib.Path(__file__).parent / "nind_denoise" / "denoise_image.py",
             "--network",
             "UtNet",
             "--model_path",
-            model_config["path"],
+            str(model_path),
             "--input",
             stage_one_output_filepath,
             "--output",

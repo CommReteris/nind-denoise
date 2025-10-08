@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 
+import pathlib
 from typing import Set
 import sys
-sys.path.append('..')
+sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 from nind_denoise.common.libs import utilities
 
 

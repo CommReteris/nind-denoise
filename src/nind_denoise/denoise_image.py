@@ -32,7 +32,9 @@ except ImportError:
     pass
 import numpy as np
 import sys
-sys.path.append('..')
+import pathlib
+# Add script's directory to path for common.libs imports
+sys.path.append(str(pathlib.Path(__file__).parent))
 from common.libs import np_imgops, pt_helpers, utilities
 #from nn_common import Model
 import nn_common

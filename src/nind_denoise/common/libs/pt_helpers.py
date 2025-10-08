@@ -1,3 +1,4 @@
+import pathlib
 import torch
 import cv2
 import imageio
@@ -6,7 +7,7 @@ import torchvision
 import numpy as np
 import sys
 
-sys.path.append('..')
+sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 from . import np_imgops, pt_losses
 
 

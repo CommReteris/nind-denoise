@@ -70,4 +70,4 @@ operations:
       darktable:params: gz48eJxjZBgFowABWAbaAaNgwAEAEDgABg==
 models:
   nind_generator_650.pt:
-    path: "src/nind_denoise/models/2021-06-14T20_27_nn_train/generator_650.pt"
+    path: "nind_denoise/models/2021-06-14T20_27_nn_train/generator_650.pt"
