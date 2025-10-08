@@ -152,6 +152,19 @@ local function output_format_changed()
   dt.preferences.write(MODULE_NAME, "output_format", "integer", NDRL.output_format.selected)
 end
 
+-- Helper function to check if file exists
+local function file_exists(path)
+    local f = io.open(path, "r")
+    if f then
+        f:close()
+        return true
+    end
+    return false
+end
+
+-- Forward declaration - will be defined after widgets
+local check_environment
+
 NDRL.substitutes = {}
 NDRL.placeholders = {"ROLL_NAME","FILE_FOLDER","FILE_NAME","FILE_EXTENSION","ID","VERSION","SEQUENCE","YEAR","MONTH","DAY",
                   "HOUR","MINUTE","SECOND","EXIF_YEAR","EXIF_MONTH","EXIF_DAY","EXIF_HOUR","EXIF_MINUTE","EXIF_SECOND",
@@ -285,6 +298,145 @@ NDRL.import_to_dt_switch = dt.new_widget("check_button") {
     end
   }
 
+-- Environment setup button
+NDRL.setup_button = dt.new_widget("button") {
+    label = _("Setup Python Environment"),
+    tooltip = _("Automatically install uv, create venv, and install dependencies"),
+    clicked_callback = function(self)
+        local denoise_dir = NDRL.conf.nind_denoise.value
+
+        if denoise_dir == "" or denoise_dir == nil then
+            dt.print(_("ERROR: Please set nind-denoise directory first"))
+            return
+        end
+
+        dt.print(_("Starting environment setup..."))
+        self.sensitive = false  -- Disable button during setup
+
+        -- Check if uv is installed (check for file existence instead of command)
+        local home = os.getenv("HOME")
+        local uv_path = home .. "/.local/bin/uv"
+        local uv_exists = file_exists(uv_path)
+
+        if not uv_exists then
+            dt.print(_("uv not found - installing..."))
+            local install_result = dtsys.external_command("curl -LsSf https://astral.sh/uv/install.sh | sh")
+
+            if install_result ~= 0 then
+                dt.print(_("ERROR: Failed to install uv. Please install manually."))
+                dt.print(_("Run: curl -LsSf https://astral.sh/uv/install.sh | sh"))
+                self.sensitive = true
+                return
+            end
+
+            dt.print(_("✓ uv installed successfully"))
+        else
+            dt.print(_("✓ uv already installed"))
+        end
+
+        -- Create venv
+        dt.print(_("Creating virtual environment..."))
+        local venv_cmd = string.format("cd %s && %s venv .venv", df.sanitize_filename(denoise_dir), uv_path)
+        local venv_result = dtsys.external_command(venv_cmd)
+
+        if venv_result ~= 0 then
+            dt.print(_("ERROR: Failed to create venv"))
+            self.sensitive = true
+            return
+        end
+        dt.print(_("✓ Virtual environment created"))
+
+        -- Install dependencies
+        dt.print(_("Installing dependencies (this may take a few minutes)..."))
+        local install_cmd = string.format("cd %s && %s pip install -e .", df.sanitize_filename(denoise_dir), uv_path)
+        local install_result = dtsys.external_command(install_cmd)
+
+        if install_result ~= 0 then
+            dt.print(_("ERROR: Failed to install dependencies"))
+            self.sensitive = true
+            return
+        end
+
+        dt.print(_("✓ Dependencies installed successfully"))
+        dt.print(_("✓ Setup complete! Python environment is ready."))
+        check_environment()  -- Update status indicator
+        self.sensitive = true
+    end
+}
+
+-- Clean environment button
+NDRL.clean_button = dt.new_widget("button") {
+    label = _("Clean Environment"),
+    tooltip = _("Remove venv and build artifacts (for uninstall or fresh setup)"),
+    clicked_callback = function(self)
+        local denoise_dir = NDRL.conf.nind_denoise.value
+
+        if denoise_dir == "" or denoise_dir == nil then
+            dt.print(_("ERROR: Please set nind-denoise directory first"))
+            return
+        end
+
+        dt.print(_("Cleaning environment..."))
+        self.sensitive = false
+
+        -- Remove venv
+        local rm_venv = string.format("rm -rf %s/.venv", df.sanitize_filename(denoise_dir))
+        os.execute(rm_venv)
+        dt.print(_("✓ Removed .venv"))
+
+        -- Remove Python cache and build artifacts
+        local rm_cache = string.format("cd %s && find . -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true", df.sanitize_filename(denoise_dir))
+        os.execute(rm_cache)
+
+        local rm_egg = string.format("rm -rf %s/*.egg-info", df.sanitize_filename(denoise_dir))
+        os.execute(rm_egg)
+
+        local rm_build = string.format("rm -rf %s/build %s/dist", df.sanitize_filename(denoise_dir), df.sanitize_filename(denoise_dir))
+        os.execute(rm_build)
+
+        dt.print(_("✓ Removed build artifacts"))
+        dt.print(_("✓ Cleanup complete!"))
+        check_environment()  -- Update status indicator
+        self.sensitive = true
+    end
+}
+
+-- Environment status label
+NDRL.env_status = dt.new_widget("label") {
+    label = _("Environment: Checking...")
+}
+
+-- Define check_environment function (was forward declared earlier)
+check_environment = function()
+    local denoise_dir = NDRL.conf.nind_denoise.value
+
+    if denoise_dir == "" or denoise_dir == nil then
+        NDRL.env_status.label = _("Environment: Not configured")
+        return false
+    end
+
+    -- Check if venv exists by checking for the directory
+    local venv_path = denoise_dir .. "/.venv"
+    local venv_python = venv_path .. "/bin/python"
+
+    if not file_exists(venv_python) then
+        NDRL.env_status.label = _("Environment: ⚠ Not set up")
+        return false
+    end
+
+    -- Check if torch is installed
+    local torch_check = string.format("%s -c 'import torch' 2>/dev/null", venv_python)
+    local result = dtsys.external_command(torch_check)
+
+    if result == 0 then
+        NDRL.env_status.label = _("Environment: ✓ Ready")
+        return true
+    else
+        NDRL.env_status.label = _("Environment: ⚠ Incomplete")
+        return false
+    end
+end
+
 -- Supported export formats
 local function supported(storage, img_format)
   -- only accept TIF for lossless intermediate file.
@@ -380,16 +532,6 @@ local function escape_shell_arg(arg)
     -- Unix/Linux escaping: wrap in single quotes and escape single quotes
     return "'" .. arg:gsub("'", "'\\''") .. "'"
   end
-end
-
--- Helper function to check if file exists
-local function file_exists(path)
-  local f = io.open(path, "r")
-  if f then
-    f:close()
-    return true
-  end
-  return false
 end
 
 -- Fallback implementations for df.* functions if they don't exist
@@ -693,6 +835,10 @@ local storage_widget = dt.new_widget("box") {
   NDRL.output_format,
   NDRL.jpg_quality_slider,
   NDRL.import_to_dt_switch,
+  dt.new_widget("section_label") { label = _("Environment Setup") },
+  NDRL.env_status,
+  NDRL.setup_button,
+  NDRL.clean_button,
   dt.new_widget("check_button") {
     label = _("Debug Mode"),
     tooltip = _("Enable verbose logging and stack traces"),
@@ -785,6 +931,9 @@ NDRL.sigma_slider.value = tonumber(NDRL.conf.sigma.value)
 NDRL.iterations_slider.value = tonumber(NDRL.conf.iterations.value)
 NDRL.import_to_dt_switch.value = NDRL.conf.import_to_dt.value
 output_format_changed()
+
+-- Check environment health on startup
+check_environment()
 
 -- script_manager integration
 script_data.destroy = destroy
