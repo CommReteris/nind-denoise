@@ -6,11 +6,13 @@ pick validation set:
     generates validation_crops_<NUM_CROPS>_<TRAIN_DATA>_<get_fn(TEST_SET_YAML)>
     TODO copy crops to visualise ground-truth
 '''
-import configargparse
 import os
 import random
-import yaml
 import sys
+
+import configargparse
+import yaml
+
 sys.path.append('..')
 from nind_denoise import nn_common
 from nind_denoise import dataset_torch_3

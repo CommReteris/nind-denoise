@@ -27,19 +27,21 @@ train w/ clean-clean images too. eg FP limited to ISO200
 # TODO functions
 # TODO full test every full_test_interval (done but too memory hungry at 32GB, could use cropping)
 
-import configargparse
-import os
-import time
-import datetime
-import torch
-from torch.utils.data import DataLoader
-import random
-import statistics
 import collections
-import yaml
-import torchvision
+import datetime
+import os
+import random
 import shutil
+import statistics
 import sys
+import time
+
+import configargparse
+import torch
+import torchvision
+import yaml
+from torch.utils.data import DataLoader
+
 sys.path.append('..')
 from nind_denoise import dataset_torch_3
 from nind_denoise import nn_common

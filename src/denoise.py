@@ -139,9 +139,7 @@ def clone_exif(src_file: pathlib.Path, dst_file: pathlib.Path, verbose=False) ->
         print(f"Copied EXIF from {src_file} to {dst_file}")
 
 
-def read_config(
-    config_path=None, _nightmode=False, verbose=False
-) -> dict:
+def read_config(config_path=None, _nightmode=False, verbose=False) -> dict:
     if config_path is None:
         # Use path relative to this script's location
         config_path = pathlib.Path(__file__).parent / "config" / "operations.yaml"
@@ -398,16 +396,16 @@ def denoise_file(_args: dict, _input_path: pathlib.Path):
         if output_dir.suffix != ""
         else (output_dir / _input_path.name).with_suffix(output_extension)
     )
-    
+
     # Ensure parent directory exists for output files
     outpath.parent.mkdir(parents=True, exist_ok=True)
-    
+
     input_xmp = (
         pathlib.Path(_args["--sidecar"])
         if _args.get("--sidecar")
         else _input_path.with_suffix(_input_path.suffix + ".xmp")
     )
-    sigma = int(_args["--sigma"]) if _args.get("--sigma") else 1
+    sigma = float(_args["--sigma"]) if _args.get("--sigma") else 1.0
     quality = _args["--quality"] if _args.get("--quality") else "90"
     iteration = _args["--iterations"] if _args.get("--iterations") else "10"
     verbose = _args["--verbose"] if _args.get("--verbose") else False

@@ -131,13 +131,10 @@ NDRL.conf = {
   sigma = {value = migrate_pref("sigma", "string", "1")},
   iterations = {value = migrate_pref("iterations", "string", "20")},
   jpg_quality = {value = migrate_pref("jpg_quality", "string", "95")},
-  denoise_enabled = {value = migrate_pref("denoise_enabled", "bool", false)},
   rl_deblur_enabled = {value = migrate_pref("rl_deblur_enabled", "bool", false)},
   debug_mode = {value = migrate_pref("debug_mode", "bool", false)},
-  import_to_dt = {value = migrate_pref("import_to_dt", "bool", false)}
+  import_to_dt = { value = migrate_pref("import_to_dt", "bool", true) }
 }
-
--- Observer functionality removed - using simple value storage instead of conf_key objects
 
 local function output_format_changed()
   if NDRL.output_format == nil then
@@ -244,15 +241,6 @@ NDRL.jpg_quality_slider = dt.new_widget("slider") {
     value = tonumber(NDRL.conf.jpg_quality.value)
   }
 
-NDRL.denoise_switch = dt.new_widget("check_button") {
-    label = _("apply nind-denoise"),
-    tooltip = _("enable noise reduction processing"),
-    value = NDRL.conf.denoise_enabled.value,
-    clicked_callback = function(self)
-      NDRL.conf.denoise_enabled.value = self.value
-    end
-  }
-
 NDRL.rl_deblur_switch = dt.new_widget("check_button") {
     label = _("apply RL deblur"),
     tooltip = _("enable Richardson-Lucy sharpening"),
@@ -289,15 +277,15 @@ NDRL.iterations_slider = dt.new_widget("slider") {
   }
 
 NDRL.import_to_dt_switch = dt.new_widget("check_button") {
-    label = _("import to darktable"),
-    tooltip = _("automatically import denoised image back into darktable library and group with original"),
+    label = _("Import & stack denoised image"),
+    tooltip = _("Automatically import denoised image back into darktable library and group with original"),
     value = NDRL.conf.import_to_dt.value,
     clicked_callback = function(self)
       NDRL.conf.import_to_dt.value = self.value
     end
   }
 
--- temp export formats: jpg and tif are supported -----------------------------
+-- Supported export formats
 local function supported(storage, img_format)
   -- only accept TIF for lossless intermediate file.
   -- JPG compression inteferes with denoising
@@ -503,15 +491,7 @@ if not dt.log_info then
   end
 end
 
--- perform nind-denoise and GMIC RL-decon on a single exported image ----------------------------------
 local function store(storage, image, img_format, temp_name, img_num, total, hq, extra)
-  -- Log diagnostic info about available dtsys functions
-  dt.print_log("DEBUG: Checking dtsys module capabilities...")
-  if dtsys.escape_shell_arg then
-    dt.print_log("DEBUG: dtsys.escape_shell_arg exists - using module function")
-  else
-    dt.print_log("DEBUG: dtsys.escape_shell_arg NOT FOUND - using fallback implementation")
-  end
   if img_format.extension == "tif" and img_format.bpp ~= 16 and img_format.bpp ~= 8 then
     dt.print_log(_("ERROR: Please set TIFF bit depth to 8 or 16"))
     dt.print(_("ERROR: Please set TIFF bit depth to 8 or 16"))
@@ -520,26 +500,24 @@ local function store(storage, image, img_format, temp_name, img_num, total, hq, 
   end
 
   local sidecar = image.sidecar
-  local org_temp_name = temp_name
   local to_delete = {}
   table.insert(to_delete, temp_name)
 
-  local denoise_name, tmp_rl_name, new_name, run_cmd, result, options
+    local new_name
 
-  -- determine output format
+    -- Determine output format
   local file_ext = img_format.extension   -- tiff only
 
-  if (extra.denoise_enabled or extra.rl_deblur_enabled) and not extra.output_format then
+    if not extra.output_format then
     dt.log_error(string.format("[NDERR-%d] Invalid output format configuration", NDERR.CMD_FAILURE))
     return false
   end
 
-  if extra.denoise_enabled or extra.rl_deblur_enabled then
+    -- Determine output file extension based on format choice
     if extra.output_format == 1 then
-      file_ext = "jpg"
+        file_ext = "jpg"
     else
-      file_ext = "tif"
-    end
+        file_ext = "tif"
   end
 
   -- Determine output path - use same directory as source image by default
@@ -574,13 +552,12 @@ local function store(storage, image, img_format, temp_name, img_num, total, hq, 
   end
 
   -- Log processing options for debugging
-  dt.print_log("Processing options: denoise="..tostring(extra.denoise_enabled)..", rl_deblur="..tostring(extra.rl_deblur_enabled))
-  
-  -- Run denoise (and optionally RL deblur) via Python
-  if extra.denoise_enabled then
+    dt.print_log("RL deblur enabled: " .. tostring(extra.rl_deblur_enabled))
+
+    -- Always run Python denoise (and optionally RL deblur)
     if extra.denoise_dir == "" or extra.denoise_dir == nil then
-      dt.log_error(string.format("[NDERR-%d] nind-denoise directory not configured", NDERR.MISSING_BINARY))
-      return false
+        dt.log_error(string.format("[NDERR-%d] nind-denoise directory not configured", NDERR.MISSING_BINARY))
+        return false
     end
 
     local escape_fn = dtsys.escape_shell_arg or escape_shell_arg
@@ -614,14 +591,14 @@ local function store(storage, image, img_format, temp_name, img_num, total, hq, 
         dt.log_error("Failed to create minimal XMP, denoise may fail")
       end
     end
-    
-    -- Step 2: Build output path for denoise.py
-    -- Just pass the output directory - Python will construct the filename
-    local python_output_dir = df.get_path(new_name)
-    
-    -- Step 3: Build denoise.py command with all options
+
+    -- Step 2: Generate unique filename BEFORE calling Python
+    df.mkdir(df.sanitize_filename(df.get_path(new_name)))
+    new_name = df.create_unique_filename(new_name)
+
+    -- Step 3: Build denoise.py command - pass full filepath
     local denoise_cmd = extra.nind_denoise.." --tiff-input"..
-                       " -o "..escape_fn(python_output_dir)..
+            " -o " .. escape_fn(new_name) ..
                        " --sidecar "..escape_fn(sidecar)..
                        " --extension "..file_ext..
                        " --quality "..extra.jpg_quality_str
@@ -647,71 +624,25 @@ local function store(storage, image, img_format, temp_name, img_num, total, hq, 
       dt.log_error(_("[NDERR-1001] Denoise/deblur processing failed"))
       return false
     end
-    
-    -- Python constructs filename from input basename + output extension
-    local python_final = python_output_dir..PS..df.get_basename(temp_name).."."..file_ext
-    
+
+    -- Python writes to the exact path we specified
     -- Wait for file to be written
     local retries = 0
-    while not file_exists(python_final) and retries < 20 do
+    while not file_exists(new_name) and retries < 20 do
       os.execute("sleep 0.2")
       retries = retries + 1
     end
-    
-    if not file_exists(python_final) then
-      dt.log_error(_("Python output not found: ")..python_final)
+
+    if not file_exists(new_name) then
+        dt.log_error(_("Python output not found: ") .. new_name)
       return false
     end
-    
-    dt.print_log("Python output verified at: "..python_final)
-    temp_name = python_final
-    table.insert(to_delete, temp_name)
-  end
 
-  -- RL deblur only (no denoise) - use GMic directly
-  if extra.rl_deblur_enabled and not extra.denoise_enabled then
-    local escape_fn = dtsys.escape_shell_arg or escape_shell_arg
-    local rl_output = df.create_unique_filename(df.get_path(temp_name)..PS..df.get_basename(temp_name).."_rl."..file_ext)
-    
-    local gmic_output_param = escape_fn(rl_output)
-    if extra.output_format == 1 then
-      gmic_output_param = gmic_output_param..","..extra.jpg_quality_str
-    end
-    
-    local gmic_cmd = escape_fn(extra.gmic).." "..escape_fn(temp_name)..
-                    " -deblur_richardsonlucy "..extra.sigma_str..","..extra.iterations_str..",1"..
-                    " cut 0,255 round -o "..gmic_output_param
-    
-    dt.print_log("GMic command: "..gmic_cmd)
-    
-    local success, result = xpcall(function()
-      return dtsys.external_command(gmic_cmd)
-    end, handle_command_error)
-
-    if not success or result ~= 0 then
-      dt.log_error(_("[NDERR-1001] RL deblur failed"))
-      return false
-    end
-    
-    if not file_exists(rl_output) then
-      dt.log_error(_("GMic output not found: ")..rl_output)
-      return false
-    end
-    
-    temp_name = rl_output
-    table.insert(to_delete, temp_name)
-  end
-
-  -- move the tmp file to final destination
-  df.mkdir(df.sanitize_filename(df.get_path(new_name)))
-  new_name = df.create_unique_filename(new_name)
-  df.file_move(temp_name, new_name)
-  dt.print(_("renamed and moved file to: ")..new_name)
+    dt.print_log("Python output verified at: " .. new_name)
+    -- File is already at final destination, no move needed
 
 -- Import to darktable and group with original
-  dt.print_log("DEBUG: extra.import_to_dt = "..tostring(extra.import_to_dt))
   if extra.import_to_dt then
-    dt.print_log("DEBUG: Inside import block, attempting import")
     local success, imported_or_err = pcall(function()
       return dt.database.import(new_name)
     end)
@@ -749,11 +680,10 @@ local function destroy()
   dt.destroy_storage("exp2NDRL")
 end
 
--- new widgets ----------------------------------------------------------------
+-- UI widgets
 local storage_widget = dt.new_widget("box") {
   orientation = "vertical",
   dt.new_widget("section_label") { label = _("Processing Options") },
-  NDRL.denoise_switch,
   NDRL.rl_deblur_switch,
   NDRL.sigma_slider,
   NDRL.iterations_slider,
@@ -772,7 +702,7 @@ local storage_widget = dt.new_widget("box") {
   }
 }
 
--- setup export ---------------------------------------------------------------
+-- Setup export
 local function initialize(storage, img_format, image_table, high_quality, extra)
   -- since we cannot change the bpp, inform user
   if img_format.extension == "tif" and img_format.bpp ~= 16 and img_format.bpp ~= 8 then
@@ -808,7 +738,6 @@ local function initialize(storage, img_format, image_table, high_quality, extra)
   extra.output_path   = NDRL.output_folder_path.text
   extra.output_format = NDRL.output_format.selected
 
-  extra.denoise_enabled     = NDRL.conf.denoise_enabled.value
   extra.rl_deblur_enabled   = NDRL.conf.rl_deblur_enabled.value
   extra.sigma_str           = string.format("%.0f", NDRL.sigma_slider.value)
   extra.iterations_str      = string.format("%.0f", NDRL.iterations_slider.value)
@@ -829,10 +758,10 @@ local function initialize(storage, img_format, image_table, high_quality, extra)
 
 end
 
--- register new storage -------------------------------------------------------
+-- Register storage
 dt.register_storage("exp2NDRL", _("nind-denoise RL"), store, nil, supported, initialize, storage_widget)
 
--- register the new preferences -----------------------------------------------
+-- Register preferences
 dt.preferences.register(MODULE_NAME, "nind_denoise", "string",
  _ ("nind_denoise directory (NRL)"),
  _ ("directory containing the nind-denoise repository"), "")
@@ -851,7 +780,6 @@ dt.preferences.register(MODULE_NAME, "debug_mode", "bool",
 NDRL.output_folder_path.text = NDRL.conf.output_path.value
 NDRL.output_format.selected = NDRL.conf.output_format.value
 NDRL.jpg_quality_slider.value = tonumber(NDRL.conf.jpg_quality.value)
-NDRL.denoise_switch.value = NDRL.conf.denoise_enabled.value
 NDRL.rl_deblur_switch.value = NDRL.conf.rl_deblur_enabled.value
 NDRL.sigma_slider.value = tonumber(NDRL.conf.sigma.value)
 NDRL.iterations_slider.value = tonumber(NDRL.conf.iterations.value)
@@ -863,6 +791,5 @@ script_data.destroy = destroy
 
 return script_data
 
--- end of script --------------------------------------------------------------
 -- vim: shiftwidth=2 expandtab tabstop=2 cindent syntax=lua
 -- kate: hl Lua;
