@@ -20,14 +20,27 @@ def fpath_to_tensor(img_fpath, device=torch.device(type='cpu'), batch=False):
         tensor = tensor.unsqueeze(0)
     return tensor
 
-def tensor_to_imgfile(tensor, path):
+def tensor_to_imgfile(tensor, path, icc_profile=None):
     if tensor.dtype == torch.float32:
         if path[-4:].lower() in ['.jpg', 'jpeg']:  # 8-bit
-            return torchvision.utils.save_image(tensor.clip(0,1), path)
+            # Save JPEG with ICC profile if provided
+            if icc_profile:
+                nptensor = (tensor.clip(0, 1) * 255).round().cpu().numpy().astype(np.uint8).transpose(1, 2, 0)
+                pilimg = Image.fromarray(nptensor, mode='RGB')
+                pilimg.save(path, icc_profile=icc_profile, quality=95, optimize=True)
+            else:
+                return torchvision.utils.save_image(tensor.clip(0, 1), path)
         elif path[-4:].lower() in ['.png', '.tif']:  # 16-bit
             nptensor = (tensor.clip(0,1)*65535).round().cpu().numpy().astype(np.uint16).transpose(1,2,0)
             nptensor = cv2.cvtColor(nptensor, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(path, nptensor)
+            # OpenCV doesn't support ICC profiles, use imageio for TIFF with profile
+            if icc_profile and path[-4:].lower() == '.tif':
+                import tifffile
+                nptensor_rgb = cv2.cvtColor(nptensor, cv2.COLOR_BGR2RGB)
+                tifffile.imwrite(path, nptensor_rgb, photometric='rgb',
+                                 extratags=[(34675, 'B', len(icc_profile), icc_profile, True)])
+            else:
+                cv2.imwrite(path, nptensor)
         elif path[-4:].lower() in ['tiff']:  # 32-bit
             nptensor = tensor.cpu().numpy().astype(np.float32).transpose(1,2,0)
             imageio.imwrite(path, nptensor)
@@ -36,7 +49,10 @@ def tensor_to_imgfile(tensor, path):
     elif tensor.dtype == torch.uint8:
         tensor = tensor.permute(1, 2, 0).to(torch.uint8).numpy()
         pilimg = Image.fromarray(tensor)
-        pilimg.save(path)
+        if icc_profile:
+            pilimg.save(path, icc_profile=icc_profile)
+        else:
+            pilimg.save(path)
     else:
         raise NotImplementedError(tensor.dtype)
 

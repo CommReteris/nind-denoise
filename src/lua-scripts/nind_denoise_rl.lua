@@ -311,6 +311,7 @@ NDRL.setup_button = dt.new_widget("button") {
         end
 
         dt.print(_("Starting environment setup..."))
+        dt.print(_("Note: First-time setup will download ~2GB of dependencies - this may take 5-10 minutes"))
         self.sensitive = false  -- Disable button during setup
 
         -- Check if uv is installed (check for file existence instead of command)
@@ -336,7 +337,7 @@ NDRL.setup_button = dt.new_widget("button") {
 
         -- Create venv
         dt.print(_("Creating virtual environment..."))
-        local venv_cmd = string.format("cd %s && %s venv .venv", df.sanitize_filename(denoise_dir), uv_path)
+        local venv_cmd = string.format("cd %s && %s venv --clear .venv", df.sanitize_filename(denoise_dir), uv_path)
         local venv_result = dtsys.external_command(venv_cmd)
 
         if venv_result ~= 0 then
@@ -634,13 +635,6 @@ if not dt.log_info then
 end
 
 local function store(storage, image, img_format, temp_name, img_num, total, hq, extra)
-  if img_format.extension == "tif" and img_format.bpp ~= 16 and img_format.bpp ~= 8 then
-    dt.print_log(_("ERROR: Please set TIFF bit depth to 8 or 16"))
-    dt.print(_("ERROR: Please set TIFF bit depth to 8 or 16"))
-    os.remove(temp_name)
-    return false
-  end
-
   local sidecar = image.sidecar
   local to_delete = {}
   table.insert(to_delete, temp_name)
@@ -850,13 +844,6 @@ local storage_widget = dt.new_widget("box") {
 
 -- Setup export
 local function initialize(storage, img_format, image_table, high_quality, extra)
-  -- since we cannot change the bpp, inform user
-  if img_format.extension == "tif" and img_format.bpp ~= 16 and img_format.bpp ~= 8 then
-    dt.print_log(_("ERROR: Please set TIFF bit depth to 8 or 16"))
-    dt.print(_("ERROR: Please set TIFF bit depth to 8 or 16"))
-    -- not returning {} here as that can crash darktable if user clicks the export button repeatedly
-  end
-
   -- Read preferences (validation removed to prevent initialization failures)
   extra.denoise_dir = dt.preferences.read(MODULE_NAME, "nind_denoise", "string")
 
@@ -889,15 +876,6 @@ local function initialize(storage, img_format, image_table, high_quality, extra)
   extra.iterations_str      = string.format("%.0f", NDRL.iterations_slider.value)
   extra.jpg_quality_str     = string.format("%.0f", NDRL.jpg_quality_slider.value)
   extra.import_to_dt        = NDRL.conf.import_to_dt.value
-
-  -- since we cannot change the bpp, inform user
-  if extra.rl_deblur_enabled then
-    if img_format.extension == "tif" and img_format.bpp ~= 16 and img_format.bpp ~= 8 then
-      dt.print_log(_("ERROR: Please set TIFF bit depth to 8 or 16 for GMic deblur"))
-      dt.print(_("ERROR: Please set TIFF bit depth to 8 or 16"))
-      -- not returning {} here as that can crash darktable if user clicks the export button repeatedly
-    end
-  end
 
   -- save preferences
   -- Preferences now managed through dt.conf observers

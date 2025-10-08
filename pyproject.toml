@@ -15,6 +15,7 @@ dependencies = [
     "exiv2~=0.17.3",
     "filelock>=3.18.0",
     "fsspec>=2025.5.1",
+    "imagecodecs~=2025.8.2",
     "imageio~=2.37.0",
     "jedi~=0.19.2",
     "jinja2~=3.1.4",

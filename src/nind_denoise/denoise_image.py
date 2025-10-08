@@ -20,7 +20,6 @@ import os
 import time
 
 import configargparse
-import cv2
 import exiv2
 import torch
 import torchvision
@@ -235,7 +234,13 @@ if __name__ == '__main__':
                          num_workers=0 if args.batch_size == 1 else max(min(args.batch_size, os.cpu_count()//4), 1),
                          drop_last=False, batch_size=args.batch_size, shuffle=False)
     topil = torchvision.transforms.ToPILImage()
-    fsheight, fswidth = cv2.imread(args.input, -1).shape[0:2]
+    fsheight, fswidth = ds.height, ds.width
+
+    # Extract ICC profile from input to preserve color space
+    icc_profile = np_imgops.extract_icc_profile(args.input)
+    if icc_profile:
+        print(f"Extracted ICC profile ({len(icc_profile)} bytes) from input")
+    
     newimg = torch.zeros(3, fsheight, fswidth, dtype=torch.float32)
 
     start_time = time.time()
@@ -269,7 +274,7 @@ if __name__ == '__main__':
                 newimg[:,absy0:absy0+tensimg.shape[1],absx0:absx0+tensimg.shape[2]] = newimg[:,absy0:absy0+tensimg.shape[1],absx0:absx0+tensimg.shape[2]].add(tensimg)
     if args.debug:
         torchvision.utils.save_image(xbatch[i].cpu().detach(), args.output+'dbg_inclborders.tif')  # dbg: get img with borders
-    pt_helpers.tensor_to_imgfile(newimg, args.output)
+    pt_helpers.tensor_to_imgfile(newimg, args.output, icc_profile=icc_profile)
     print(f'Denoised image written to {args.output}')
     if args.output[:-4] == '.jpg' and args.exif_method == 'piexif':
         piexif.transplant(args.input, args.output)
