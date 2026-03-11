@@ -80,7 +80,7 @@ local function migrate_pref(key, type, default)
     return dt.preferences.read(MODULE_NAME, key, type)
   end)
 
-  if success then
+  if success and value ~= nil and value ~= "" then
     return value
   end
   return default
